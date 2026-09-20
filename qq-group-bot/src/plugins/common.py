@@ -1,4 +1,5 @@
 """通用工具函数。"""
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -104,24 +105,40 @@ def is_managed_group(group_id: int) -> bool:
 # ---------------- 机器人自身管理员身份检测 ----------------
 # 缓存 5 分钟：避免每条消息都查一次 API；撤销/授予管理后最迟 5 分钟生效
 _bot_admin_cache: dict[int, tuple[bool, float]] = {}
+_bot_admin_locks: dict[int, asyncio.Lock] = {}
 _ADMIN_CACHE_TTL = 300
 
 
 async def bot_is_admin(bot: Bot, group_id: int) -> bool:
-    """查询机器人在指定群是否拥有管理员/群主身份（带缓存）。"""
+    """查询机器人在指定群是否拥有管理员/群主身份（带缓存 + 并发去重）。
+
+    为什么要加锁：NoneBot2 对同一个 matcher 的多个 rule checker 是 asyncio.gather
+    并发求值的（on_command 的命令判断与这里传入的 rule 也一起并发跑），
+    再叠加"同优先级多个 matcher 同时判定"，一条群消息会让本函数被并发调用十几次。
+    缓存为空时这十几次会全部穿透去打 API（实测单条消息 15 次 get_group_member_info）。
+    用 per-group 锁 + 双检把并发请求收敛成一次，避免给协议端制造无谓的请求突发。
+    """
     now = time.time()
     cached = _bot_admin_cache.get(group_id)
     if cached and now - cached[1] < _ADMIN_CACHE_TTL:
         return cached[0]
-    try:
-        info = await bot.get_group_member_info(
-            group_id=group_id, user_id=bot.self_id, no_cache=True
-        )
-        ok = info.get("role") in ("admin", "owner")
-    except Exception:
-        ok = False  # 查不到（如机器人已退群）按无权限处理
-    _bot_admin_cache[group_id] = (ok, now)
-    return ok
+
+    lock = _bot_admin_locks.setdefault(group_id, asyncio.Lock())
+    async with lock:
+        # 双检：可能已经有别的协程查完并写进缓存了
+        now = time.time()
+        cached = _bot_admin_cache.get(group_id)
+        if cached and now - cached[1] < _ADMIN_CACHE_TTL:
+            return cached[0]
+        try:
+            info = await bot.get_group_member_info(
+                group_id=group_id, user_id=bot.self_id, no_cache=True
+            )
+            ok = info.get("role") in ("admin", "owner")
+        except Exception:
+            ok = False  # 查不到（如机器人已退群）按无权限处理
+        _bot_admin_cache[group_id] = (ok, now)
+        return ok
 
 
 def in_managed_group() -> Rule:

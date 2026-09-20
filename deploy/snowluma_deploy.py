@@ -6,7 +6,7 @@
   2. 生成/补齐 SnowLuma 的 OneBot v11 网络配置：
        HTTP 服务端 127.0.0.1:3100（避开旧栈 NapCat 的 3000）
        WS  服务端 127.0.0.1:3001
-       WS  客户端 → ws://127.0.0.1:8080/onebot/v11/ws（连本项目业务框架 NoneBot）
+       WS  客户端 → ws://127.0.0.1:8081/onebot/v11/ws（连本项目业务框架 NoneBot）
   3. 体检并打印后续人工步骤（扫码登录、启动顺序）
 
 注意：Python 依赖（nonebot2 等）由既有的『一键部署.bat』负责，本脚本只管协议端。
@@ -172,7 +172,15 @@ def write_onebot_config(cfg: dict, target: Path) -> Path:
     if any(c.get("url") == want for c in clients):
         log("配置", f"WS 客户端已指向业务框架：{want}")
     else:
-        keep = [c for c in clients if not c.get("url", "").startswith("ws://127.0.0.1:6199")]
+        # 剔除所有指向本机其它端口的旧客户端（早期 AstrBot 的 6199、老项目 NoneBot 的 8080 等）。
+        # 不剔除的话，SnowLuma 会同时连两个业务框架 → 同一条消息被处理两遍。
+        local_prefixes = ("ws://127.0.0.1", "ws://localhost", "ws://[::1]")
+        dropped = [c.get("url") for c in clients
+                   if str(c.get("url", "")).startswith(local_prefixes)]
+        keep = [c for c in clients
+                if not str(c.get("url", "")).startswith(local_prefixes)]
+        for url in dropped:
+            log("配置", f"移除指向本机其它端口的旧 WS 客户端：{url}")
         keep.append({
             "name": "nonebot-business",
             "messageFormat": "array",
@@ -235,7 +243,7 @@ def main() -> int:
     print("  1. 确认桌面版 QQ 已登录（SnowLuma 通过 hook 注入正在运行的 QQ.exe）")
     print("  2. 双击『启动-SnowLuma版.bat』，等控制台出现 WebUI 地址")
     print(f"  3. 浏览器打开 http://127.0.0.1:{cfg['snowluma_webui_port']}，用启动日志里的初始账号密码登录")
-    print(f"  4. WebUI 里接入 QQ：扫码登录小号 {cfg['snowluma_bot_qq']}（勿与旧栈同号同时在线）")
+    print(f"  4. WebUI 里接入 QQ：扫码登录目标账号 {cfg['snowluma_bot_qq']}（勿与老项目同号同时在线）")
     print(f"  5. 确认 配置已生效：{cfg_file.name} 里 WS 客户端 = {want_url(cfg)}")
     print("  6. 双击『自检-SnowLuma版.bat』确认全绿")
     print("-" * 62)
@@ -302,10 +310,26 @@ def find_base_python(cfg: dict) -> str | None:
 
 def ensure_python_env(cfg: dict) -> Path | None:
     """确保项目 venv 里有 nonebot；没有就建 venv + 装依赖。返回可用解释器。"""
-    venv_py = BASE / "venv" / "Scripts" / "python.exe"
+    venv_dir = BASE / "venv"
+    venv_py = venv_dir / "Scripts" / "python.exe"
     if venv_py.exists() and _has_nonebot(str(venv_py)):
         log("OK", f"Python 环境就绪：{venv_py}")
         return venv_py
+
+    # venv 在、但里面的 python.exe 根本起不来 —— 典型是把项目从别的机器拷过来，
+    # pyvenv.cfg 里的 home 还绑着原来那台机器的解释器。此时不能直接 pip install
+    # （连解释器都跑不了，装依赖只会报一堆看不懂的错），必须先备份再重建。
+    if venv_py.exists() and not _python_works(str(venv_py)):
+        broken = BASE / "venv.machine-bound"
+        log("警告", "现有 venv\\ 不可用（绑定了旧机器的 Python 路径），改名备份后重建")
+        try:
+            if broken.exists():
+                shutil.rmtree(broken, ignore_errors=True)
+            shutil.move(str(venv_dir), str(broken))
+            log("提醒", f"旧环境已备份为 {broken.name}\\，可自行删除")
+        except Exception as exc:
+            log("错误", f"备份旧 venv 失败：{exc}（请手动把 venv\\ 改名后重跑）")
+            return None
 
     base = find_base_python(cfg)
     if not base:

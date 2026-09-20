@@ -59,7 +59,14 @@ def load_cfg() -> dict:
             for k in DEFAULTS:
                 if k in raw and raw[k] not in ("", None):
                     cfg[k] = raw[k]
-            cfg["bot_port"] = int(raw.get("bot_port", cfg["bot_port"]))
+            # 端口统一转 int：JSON 里写成字符串（"8081"）时 socket/netstat 会直接抛异常
+            for key in ("snowluma_webui_port", "snowluma_http_port",
+                        "snowluma_ws_port", "bot_port"):
+                try:
+                    cfg[key] = int(cfg[key])
+                except (TypeError, ValueError):
+                    say(WARN, f"配置项 {key} 不是合法端口号（{cfg[key]!r}），回退默认 {DEFAULTS[key]}")
+                    cfg[key] = DEFAULTS[key]
         except Exception as exc:
             say(WARN, f"读取 部署配置.json 失败，改用默认值：{exc}")
     return cfg
@@ -257,7 +264,7 @@ def check() -> int:
         if f"login detected: PID=" in txt and f"UIN={uin}" in txt:
             say(OK, f"hook 注入成功，账号 {uin} 已登录")
         elif "login detected" in txt:
-            say(WARN, "有 hook 注入记录，但账号与配置里的小号不一致（是不是登错号了）")
+            say(WARN, "有 hook 注入记录，但账号与 部署配置.json 里的 snowluma_bot_qq 不一致（是不是登错号了）")
         else:
             say(BAD, "日志里没有 hook 注入记录：QQ 未运行 / 权限不一致 / QQ 版本不匹配")
             SUGGESTS.append("确认桌面版 QQ 已登录，且 SnowLuma 与 QQ 用同一个 Windows 用户、同样权限运行")
@@ -277,11 +284,11 @@ def check() -> int:
     else:
         btxt = tail_text(bot_log)
         if f"Bot {uin} connected" in btxt:
-            say(OK, f"小号 {uin} 已接入业务框架，群管功能生效")
+            say(OK, f"账号 {uin} 已接入业务框架，群管功能生效")
         else:
             hits = re.findall(r"Bot (\d+) connected", btxt)
             if hits:
-                say(WARN, f"业务框架当前接入的是 {', '.join(sorted(set(hits)))}，未见小号 {uin}")
+                say(WARN, f"业务框架当前接入的是 {', '.join(sorted(set(hits)))}，未见目标账号 {uin}")
             else:
                 say(BAD, "业务框架还没有任何账号接入记录")
 

@@ -2,13 +2,67 @@
 
 > 本项目（QQ 群管机器人 · **SnowLuma + NoneBot** 版）的所有版本变更记录。新版本发布时在最上方追加。
 > 格式参考：[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)
-> 当前版本：**v1.1.0**（见 `VERSION` 文件）
+> 当前版本：**v1.2.0**（见 `VERSION` 文件）
 
 ## 版本策略
 
 - 本项目与原项目（`QQ群管机器人`，NapCat + NoneBot）**版本线相互独立**，各自演进、互不覆盖
 - 每次发版 = 一个独立 commit，禁止 force push / 改写已推送历史，旧 tag 永不移动
 - 发版三件套：本文件新增条目 + 更新 `VERSION` + 打 annotated tag 一并推送
+
+---
+
+## [1.2.0] - 2026-09-20
+
+**全项目自检后的修复版：修掉 3 个会实际影响运行的缺陷，并把部署/维护文档对齐到真实状态。**
+
+### 修正
+
+- ⚠ **`bot_is_admin` 缓存被并发穿透**：NoneBot2 对同一个 matcher 的多个 rule checker 是
+  `asyncio.gather` 并发求值的（`on_command` 的命令判断与自定义 rule 一起并发跑），叠加同优先级多个 matcher
+  同时判定，一条群消息会让本函数被并发调用 15 次；缓存为空时全部穿透去打 API。
+  **实测 SnowLuma 日志里单条消息打了 15 次 `get_group_member_info`。**
+  改为 per-group `asyncio.Lock` + 双检，并发请求收敛为 1 次
+- ⚠ **测试脚本会写穿线上配置**：`switch` 流程会写 `部署配置.json` 的 `snowluma_bot_qq`，
+  而测试直接对着项目里的真实配置跑 → 跑一次测试就把正在部署的账号改成测试占位号。
+  新增环境变量 `SNOWLUMA_CONFIG_PATH`，测试改写临时副本，并加断言锁死"真实配置不得被改动"
+- ⚠ **`一键部署` 遇到绑死旧机器的 venv 会卡死**：项目自带的 `venv\` 里 `pyvenv.cfg` 绑着创建时的
+  解释器路径，把项目拷到别的机器后 `venv\Scripts\python.exe` 根本起不来；原逻辑只判断"venv 存在"，
+  于是跳过重建、直接 `pip install`（连解释器都跑不了），失败信息完全对不上病因。
+  改为：探测到"venv 在但解释器跑不通"→ 自动改名 `venv.machine-bound\` 备份后重建
+- `snowluma_account.py`：`unload` 增加**结果复核**。实测 SnowLuma 会"接口返回成功但 hook 没摘掉"
+  （日志 `[Hook] unload verification failed: PID=xxx pipe still up`），旧账号仍占着 3100/3001；
+  现在复核发现仍在加载会明确报出并返回失败码，不再误报"卸载成功"
+- `snowluma_deploy.py`：写 OneBot 配置时，`wsClients` 清理范围从"只清 6199"扩大到
+  **所有指向本机其它端口的旧客户端**（含老项目 NoneBot 的 8080）——残留会导致同一条消息被两个业务框架处理两遍
+- `snowluma_deploy.py`：模块 docstring 里业务框架端口 8080 → 8081（与实际不符）
+- `snowluma_ctl.py`：端口配置统一强转 `int`（`部署配置.json` 里写成字符串时不再抛 `TypeError`，改为回退默认值并告警）
+
+### 文档
+
+- `README.md`：删除过时的"本项目登小号、老项目登主号"；新增「账号怎么安排」一节，
+  **要求动手前先核对两个项目 `部署配置.json` 里的 `bot_qq` / `snowluma_bot_qq` 是不是同一个号**
+  （自检时实测两处确实同号，只是老项目 NapCat 当前登录失效才没冲突；它一旦重新登录成功就会与本项目互踢）；
+  目录表补 `deploy\snowluma_account.py`、`logs\bot.log`，移除已删除的 `AstrBot\`
+- `docs\部署说明.md`：第 3 节"登录小号"→"登录账号"；排障表新增 3 条
+  （风控无关的重复 API 调用 / unload 未真正生效 / 换机器后 venv 坏掉）；
+  **新增第 8 节「维护要点」**：业务插件改完必须重启才生效、自测命令、必须在 `qq-group-bot\` 目录下跑业务
+  （否则 `.env` 读不到会落到 8080 与老项目撞车）、别把比对齐版本新的 QQ 安装包放在项目里、日志体积、发版三件套、敏感信息边界
+- `docs\功能说明.md`：账号段改为"以各自 `部署配置.json` 为准"；切换主用流程补第 5 步收尾提醒（错开账号 / 停用一边）
+- `部署配置.example.json` / `部署配置.json`：`snowluma_bot_qq_说明` 改为账号无关的表述
+
+### 测试
+
+- 新增 `.workbuddy/test_admin_cache.py`：5 组断言锁住并发去重行为
+  （首次并发 15 次→1 次、缓存内→0 次、过期后→1 次、不同群各自查询、API 异常时降级且不重复打）
+- `.workbuddy/test_account_switch.py` 扩展到 7 组：新增"接口成功但 hook 未摘掉必须报错"、
+  "真实配置不得被测试污染"；夹具账号改为占位符（1000000001 / 2000000002）
+
+### 内部
+
+- `.workbuddy/gen_bats.py`：`BASE` 此前仍指向已改名的 `QQ机器人-SnowLuma-AstrBot`，且模板里还写着
+  不存在的 `docs\部署说明-SnowLuma版.md`（重跑会写错目录、生成错引用），已修正并加"定位不到项目目录就报错"；
+  重新生成的 4 个 bat 与仓库现有 4 个**逐字节一致**（确认生成器与产物已同步）
 
 ---
 

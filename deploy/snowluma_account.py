@@ -35,7 +35,11 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent          # QQ机器人-SnowLuma-NoneBot/
 SNOWLUMA_DIR = BASE / "SnowLuma"
-CONFIG_PATH = BASE / "部署配置.json"
+# 部署配置.json 的位置。SNOWLUMA_CONFIG_PATH 用于把配置指到临时副本——
+# 测试脚本会真的调用 switch 流程，若直接指向项目里的真实配置，跑一次测试
+# 就会把 snowluma_bot_qq 改成测试用的占位号，污染正在运行的部署。
+CONFIG_PATH = Path(os.environ["SNOWLUMA_CONFIG_PATH"]) if os.environ.get("SNOWLUMA_CONFIG_PATH") \
+    else BASE / "部署配置.json"
 
 DEFAULTS = {
     "snowluma_dir": "SnowLuma",
@@ -355,7 +359,19 @@ def do_unload(token: str, cfg: dict, target: dict, label: str) -> bool:
     if target["pid"] is None:
         say(WARN, f"{label}：拿不到 PID，跳过卸载")
         return False
-    return api_process(token, cfg, target["pid"], "unload")
+    if not api_process(token, cfg, target["pid"], "unload"):
+        return False
+    # 复核：接口返回 200 不代表 hook 真的摘掉了。实测见过 SnowLuma 日志里
+    # "[Hook] unload verification failed: PID=xxx pipe still up" 但接口依然返回成功，
+    # 这时旧账号仍会占着 3100 / 3001，出现 EADDRINUSE。
+    procs, _ = get_processes(token, cfg)
+    again = next((p for p in procs if p["pid"] == target["pid"]), None)
+    if again is not None and again["loaded"] is True:
+        say(WARN, f"{label}：接口返回成功，但复核发现 hook 仍在加载（PID {target['pid']}）；"
+                  "可再执行一次本命令，或到 5099 网页上手动卸载")
+        return False
+    say(OK, f"{label}：卸载后复核已确认 hook 不再加载")
+    return True
 
 
 def cmd_unload(cfg: dict, key: str) -> int:

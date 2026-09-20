@@ -3,7 +3,7 @@
   "snowluma_dir": "SnowLuma",
   "snowluma_dir_说明": "SnowLuma 协议端目录，相对本文件所在目录",
   "snowluma_bot_qq": "1000000001",
-  "snowluma_bot_qq_说明": "协议端登录的 QQ 小号（勿与原项目主号同时登两端）",
+  "snowluma_bot_qq_说明": "本项目协议端登录的 QQ 号。切换账号=双击『切换账号.bat』；红线=同一个号不能同时接两个协议端",
   "snowluma_webui_port": 5099,
   "snowluma_webui_port_说明": "SnowLuma 管理面板端口",
   "snowluma_http_port": 3100,
