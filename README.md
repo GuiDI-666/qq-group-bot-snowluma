@@ -37,6 +37,7 @@ SnowLuma（hook 桌面 QQ，协议端）
 | `一键部署-SnowLuma版.bat` | 准备 Python 环境与依赖 → 解压 SnowLuma → 写 OneBot 配置 → 体检 |
 | `启动-SnowLuma版.bat` | 启动协议端（新窗口）+ 业务框架（本窗口） |
 | `自检-SnowLuma版.bat` | 全链路体检：目录、QQ 版本匹配、端口、hook 注入、WS 连接、账号接入 |
+| `切换账号.bat` | 切换登录账号：走 SnowLuma API 卸载旧账号 hook、重载目标账号（QQ 换号仍需人工） |
 | `关闭-SnowLuma版.bat` | 只停本套（SnowLuma + 业务框架），不动老项目 |
 
 首次使用顺序：**桌面版 QQ 保持登录 → 一键部署 → 启动 → 在 SnowLuma 面板扫码登录小号 → 自检**

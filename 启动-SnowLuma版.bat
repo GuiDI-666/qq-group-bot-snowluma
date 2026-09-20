@@ -16,7 +16,7 @@ echo.
 
 if not exist "%~dp0SnowLuma\launcher.bat" (
   echo [错误] 没找到 SnowLuma\launcher.bat
-  echo   请先双击『一键部署-SnowLuma版.bat』，或见 docs\部署说明-SnowLuma版.md
+  echo   请先双击『一键部署-SnowLuma版.bat』，或见 docs\部署说明.md
   echo.
   pause
   exit /b 1

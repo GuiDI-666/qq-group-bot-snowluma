@@ -186,7 +186,7 @@ def check() -> int:
         else:
             say(BAD, f"缺少{label}：{p}")
     if not (sl_dir / "launcher.bat").exists():
-        SUGGESTS.append("SnowLuma 未就绪：双击『一键部署-SnowLuma版.bat』，或见 docs\\部署说明-SnowLuma版.md 第 3 节")
+        SUGGESTS.append("SnowLuma 未就绪：双击『一键部署-SnowLuma版.bat』，或见 docs\\部署说明.md 第 3 节")
 
     py = BASE / "venv" / "Scripts" / "python.exe"
     if py.exists():

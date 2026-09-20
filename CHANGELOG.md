@@ -2,13 +2,49 @@
 
 > 本项目（QQ 群管机器人 · **SnowLuma + NoneBot** 版）的所有版本变更记录。新版本发布时在最上方追加。
 > 格式参考：[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)
-> 当前版本：**v1.0.0**（见 `VERSION` 文件）
+> 当前版本：**v1.1.0**（见 `VERSION` 文件）
 
 ## 版本策略
 
 - 本项目与原项目（`QQ群管机器人`，NapCat + NoneBot）**版本线相互独立**，各自演进、互不覆盖
 - 每次发版 = 一个独立 commit，禁止 force push / 改写已推送历史，旧 tag 永不移动
 - 发版三件套：本文件新增条目 + 更新 `VERSION` + 打 annotated tag 一并推送
+
+---
+
+## [1.1.0] - 2026-09-20
+
+**新增「账号切换」脚本：把 5099 网页上的「卸载 / 加载账号」变成一条命令。**
+
+### 新增
+
+- `切换账号.bat` —— 切换登录账号的入口（支持 `切换账号.bat list` 只看状态）
+- `deploy/snowluma_account.py` —— 走 SnowLuma WebUI HTTP API 的账号管理脚本：
+  - `list` / `list --raw`：列出 QQ 进程、账号、hook 加载状态（`--raw` 带服务端原始 JSON）
+  - `switch <QQ>`：卸载其它账号的 hook → 校正目标账号协议端配置 → 重载目标账号 → 复核
+  - `unload <QQ|PID>`：只卸载某个账号
+  - `sync-config <QQ>`：只校正协议端配置（HTTP 3100 / WS 3001 / wsClient → 8081）
+  - 密码来源：环境变量 `SNOWLUMA_WEBUI_PASSWORD` 或交互输入，**不落盘**
+
+### 修正
+
+- ⚠ **纠正切号方式**：之前"直接复制 `config/onebot_<新号>.json`"的做法会造成脏状态——SnowLuma 会同时为
+  两个账号建立 session，抢 HTTP 3100 / WS 3001 端口，日志刷 `EADDRINUSE`。正确做法是「先卸载旧账号 hook、
+  再加载目标账号」，即本版脚本所做
+- 修正 3 处文档引用错误：`启动-SnowLuma版.bat`、`自检-SnowLuma版.bat`、`deploy/snowluma_ctl.py` 指向了
+  不存在的 `docs\部署说明-SnowLuma版.md`，统一为 `docs\部署说明.md`
+
+### 文档
+
+- `docs/部署说明.md` 新增第 6 节「切换登录账号（脚本化）」：能/不能脚本化的边界、用法、正确顺序、反面教材；
+  排障表新增"端口 EADDRINUSE"一条
+- `README.md` 脚本表补充 `切换账号.bat`
+- `docs/功能说明.md` 换号说明改为脚本口径
+
+### 说明
+
+- **不能脚本化的部分**：QQ 客户端退出旧号 / 登录新号需要账号密码与手机验证，QQ 客户端不提供稳定可用的
+  命令行换号接口，必须人工。脚本要求目标账号已在桌面版 QQ 登录，未登录时只提示、不做任何破坏性操作
 
 ---
 
