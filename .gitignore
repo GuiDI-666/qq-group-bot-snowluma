@@ -1,0 +1,24 @@
+# 个人隐私配置（如需入库，只提交 *.example.json）
+部署配置.json
+qq-group-bot/.env
+qq-group-bot/config.json
+
+# 虚拟环境与大文件
+venv/
+SnowLuma/
+AstrBot/
+deps/
+*.zip
+
+# 运行时产物
+logs/
+**/__pycache__/
+*.py[co]
+qq-group-bot/data/
+
+# AI 助理工作区
+.workbuddy/
+
+# QQ 安装包/更新包（体积巨大，且版本需与 SnowLuma hook 匹配，不入库）
+QQ_*.exe
+*.zip
