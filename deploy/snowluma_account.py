@@ -69,6 +69,15 @@ def say(tag: str, msg: str):
     print(f"{tag} {msg}")
 
 
+def rel(p: Path) -> str:
+    """安全显示相对路径。snowluma_dir 允许写成项目外的绝对路径（如服务器上），
+    此时 relative_to(BASE) 会抛 ValueError，直接崩在打印语句上。"""
+    try:
+        return str(p.relative_to(BASE))
+    except ValueError:
+        return str(p)
+
+
 # --------------------------------------------------------------------------- 配置
 
 def load_cfg() -> dict:
@@ -105,6 +114,12 @@ def save_cfg_qq(uin: str):
 
 
 def sl_dir(cfg: dict) -> Path:
+    # SNOWLUMA_DIR 覆盖：测试脚本会真的走 switch 流程，而 switch 会为目标账号生成
+    # SnowLuma/config/onebot_<uin>.json。若不隔离，跑一次测试就会在真实协议端目录里
+    # 留下占位账号的配置文件（与 SNOWLUMA_CONFIG_PATH 同类问题）。
+    override = os.environ.get("SNOWLUMA_DIR")
+    if override:
+        return Path(override)
     d = Path(cfg["snowluma_dir"])
     return d if d.is_absolute() else BASE / d
 
@@ -291,7 +306,7 @@ def ensure_config(cfg: dict, uin: str) -> tuple[Path, bool]:
     if not path.exists():
         path.write_text(json.dumps(onebot_template(cfg, uin), ensure_ascii=False, indent=2),
                         encoding="utf-8")
-        say(OK, f"已生成协议端配置：{path.relative_to(BASE)}")
+        say(OK, f"已生成协议端配置：{rel(path)}")
         return path, True
 
     try:
@@ -329,7 +344,7 @@ def ensure_config(cfg: dict, uin: str) -> tuple[Path, bool]:
 
     if changed:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        say(OK, f"已校正协议端配置：{path.relative_to(BASE)}")
+        say(OK, f"已校正协议端配置：{rel(path)}")
     return path, changed
 
 
