@@ -19,11 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-第三方组件说明：
-
-- `SnowLuma/` 目录下的协议端为独立发行物，遵循 SnowLuma 原始许可条款
-  （source-available，非商业使用），本 MIT 许可证不覆盖该目录。
-- `qq-group-bot/` 业务框架基于 NoneBot2（MIT）构建，其许可由上游项目继承。
