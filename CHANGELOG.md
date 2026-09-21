@@ -2,13 +2,40 @@
 
 > 本项目（QQ 群管机器人 · **SnowLuma + NoneBot** 版）的所有版本变更记录。新版本发布时在最上方追加。
 > 格式参考：[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)
-> 当前版本：**v1.2.2**（见 `VERSION` 文件）
+> 当前版本：**v1.2.3**（见 `VERSION` 文件）
 
 ## 版本策略
 
 - 本项目与原项目（`QQ群管机器人`，NapCat + NoneBot）**版本线相互独立**，各自演进、互不覆盖
 - 每次发版 = 一个独立 commit，禁止 force push / 改写已推送历史，旧 tag 永不移动
 - 发版三件套：本文件新增条目 + 更新 `VERSION` + 打 annotated tag 一并推送
+
+---
+
+## [1.2.3] - 2026-09-21
+
+### 协议端升级（行为变更 ⚠）
+
+- **SnowLuma v1.14.8 → v1.14.17**。v1.14.8 存在官方已确认的入群审批缺陷：同意入群时服务端返回
+  `OIDB error 120162007 on 0x10c8: already deleted by system`，导致审批永远不生效。
+  v1.14.11 修复"被当作已消失而拒绝的待处理入群请求"，v1.14.17 修复"来自被过滤收件箱的
+  入群请求无法审批（#197）"并规范化了请求 flag（实测两个症状都命中）
+- 本机 QQ **9.9.28-46928 不用动**：v1.14.17 实测兼容（hook 自动重连、rkeys 正常加载、
+  收发正常）。issue #370（v1.14.8 + QQ 9.9.32 半失效）在 v1.14.9/v1.14.10 已修复
+- 升级方式：仅替换应用文件（index.mjs、散束 js、native、client 等），`config/`、`data/`、
+  `logs/` 原封保留；旧版应用文件备份于 `D:\Desktop\机器人安装包备份\SnowLuma-v1.14.8-runtime-backup\`，
+  config+data 另有 2026-09-21 快照
+- v1.14.17 安装 zip 备份于 `D:\Desktop\机器人安装包备份\SnowLuma-v1.14.17-win-x64.zip`
+
+### 运维经验（新增）
+
+- **在终端/沙箱里直接 `node ./index.mjs` 会段错误**——SnowLuma 的 hook 组件不能在
+  MSYS bash / 受控进程树下启动，必须从真实桌面窗口（双击 bat 或 `start` 分离窗口）启动；
+  启动"没反应"往往是 Defender 在扫新文件，可能延迟数分钟，先看日志再下结论
+
+### 文档
+
+- README 与部署说明的 QQ 版本口径更新为「QQ 9.9.28-46928 + SnowLuma v1.14.17 实测兼容」
 
 ---
 
