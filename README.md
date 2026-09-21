@@ -1,102 +1,182 @@
-# QQ 群管机器人（SnowLuma + NoneBot 版）
+<div align="center">
 
-> 独立项目，与「QQ群管机器人」（NapCat + NoneBot 老项目）**完全分离、互不干涉**。
-> 两个项目有各自的协议端、业务进程、端口与配置；**同一个 QQ 号绝不能同时接两个协议端**（会互踢）。
+# QQ Group Manager Bot
 
-## 为什么这样选
+**基于 SnowLuma + NoneBot2 的 QQ 群管理机器人**
 
-老项目用 NapCat（非官方协议实现），长期被风控踢下线（KickedOffLine 约 1.5 小时一次），"假在线僵死"频发。调研结论见 `docs\框架调研与迁移决策.md`：
+_以真实桌面 QQ 为协议底座，标准 OneBot v11 接口，开箱即用的群管插件套件_
 
-- SnowLuma 通过 **hook 注入真实桌面版 QQ 客户端**，协议表现更接近真人客户端，社区有"换后不再被踢"的实证
-- SnowLuma 输出标准 **OneBot v11**，与 NapCat 口径一致 → **群管业务不用重写**，老项目的 NoneBot 业务框架原样复用
+[![Release](https://img.shields.io/github/v/release/GuiDI-666/qq-group-bot-snowluma?include_prereleases&color=blue)](https://github.com/GuiDI-666/qq-group-bot-snowluma/releases)
+[![OneBot v11](https://img.shields.io/badge/OneBot-v11-black)](https://github.com/botuniverse/onebot-11)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)](README.md#-快速开始)
+[![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
+
+</div>
+
+---
+
+## ✨ 功能特性
+
+一套覆盖日常群管场景的插件套件，全部命令以 `/` 前缀触发：
+
+| 模块 | 能力 |
+|---|---|
+| 🛡 **入群自动审批** | 按申请者 QQ 等级自动通过 / 拒绝，可设生效群、兜底策略（`approve`/`reject`/`ignore`）与拒绝理由模板 |
+| 🧹 **广告拦截** | 正则规则 + 违禁词双通道，命中即撤回并禁言，时长可配 |
+| ⛔ **黑名单** | 拉黑并踢出、拒绝其再入群；被拉黑用户入群申请自动拒绝 |
+| 🔇 **禁言 / 踢出** | `@某人` 或 QQ 号均可定位，时长默认 10 分钟，可自定义 |
+| 👋 **欢迎 / 退群提示** | 模板支持 `{at}`、`{nickname}`、`{level}` 占位符，群里随时改 |
+| 🤫 **全局静默** | `h`/`m`/`s` 三种时长单位，静默期间对所有群完全静默 |
+| 📊 **活跃统计** | 一键拉取超过 N 天未发言的成员名单 |
+| ⚙️ **运行时设置** | 等级门槛、广告规则、提示语、管理群名单全部可通过命令热修改，`/查看设置` 一屏总览 |
+
+<details>
+<summary><b>📖 完整命令表（点击展开）</b></summary>
+
+| 命令 | 说明 | 权限 |
+|---|---|---|
+| `/禁言 @某人 [分钟]` | 禁言，默认 10 分钟 | 管理员/群主 |
+| `/解禁 @某人` | 解除禁言 | 管理员/群主 |
+| `/踢出 @某人` | 移出群聊 | 群主 |
+| `/拉黑 @某人 [原因]` | 拉黑并踢出 | 管理员/群主 |
+| `/解除拉黑 @某人` | 移出黑名单 | 管理员/群主 |
+| `/黑名单` | 查看黑名单 | 管理员/群主 |
+| `/设置等级 30` | 修改入群审批等级门槛 | 管理员/群主 |
+| `/查看等级` | 查看入群审批完整设置 | 管理员/群主 |
+| `/查看设置` | 所有设置一屏总览 | 管理员/群主 |
+| `/添加广告` / `/删除广告` | 维护广告拦截规则 | 管理员/群主 |
+| `/广告列表` | 查看广告规则与违禁词 | 管理员/群主 |
+| `/设置欢迎` / `/设置退群` | 修改欢迎语 / 退群提示 | 管理员/群主 |
+| `/添加管理群` / `/移除管理群` | 设置生效群白名单（私聊） | 超级管理员 |
+| `/静默 2h` / `/静默 off` | 全局静默 / 解除（私聊） | 管理员 |
+| `/未发言 30` | 拉取 N 天未发言成员 | 管理员/群主 |
+| `/ping` / `/状态` | 存活检查与运行状态 | 所有人 |
+
+</details>
+
+## 🏗 架构
 
 ```
-SnowLuma（hook 桌面 QQ，协议端）
-   └─ WS 客户端 ──> ws://127.0.0.1:8081/onebot/v11/ws ──> NoneBot 业务框架（群管功能）
+┌─────────────────┐    hook 注入    ┌──────────────────────┐
+│  桌面版 QQ 客户端 │ ◄────────────  │  SnowLuma 协议端      │
+│  (真实 NTQQ)     │                │  WebUI:5099          │
+└─────────────────┘                │  HTTP :3100 (OneBot) │
+                                   │  WS   :3001 (OneBot) │
+                                   └──────────┬───────────┘
+                                              │ WebSocket (反向 WS)
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │  NoneBot2 业务框架     │
+                                   │  :8081  群管插件套件   │
+                                   └──────────────────────┘
 ```
 
-## 支持的 QQ 版本（重要，先看这个）
+**为什么选 SnowLuma 作协议端？**
 
-SnowLuma 靠 **hook 注入真实桌面版 QQ** 工作，与 QQ 版本**强绑定**：
+- SnowLuma 通过 **hook 注入真实桌面版 QQ 客户端**，协议表现接近真人客户端，规避非官方协议端常见的风控踢下线问题
+- 输出标准 **OneBot v11**，与 NapCat 等主流协议端接口一致，NoneBot2 侧插件无需任何改动即可迁移
+- 自带 Node.js 运行时，解压即用，无额外环境依赖
 
-| 项 | 值 |
+## 📦 快速开始
+
+### 环境要求
+
+| 项 | 要求 |
 |---|---|
-| **对齐版本** | **QQ 9.9.28-46928**（协议端 **SnowLuma v1.14.17** 实测兼容；升级协议端不必动 QQ） |
-| 禁止安装 | 任何更高版本（如 9.9.35+），装上 hook 即失效 |
-| QQ 自动更新 | **必须关闭**（本机已关） |
+| 操作系统 | Windows 10/11（x64） |
+| 桌面版 QQ | **9.9.28-46928**（见下方版本警告） |
+| Python | 3.9 ~ 3.13（部署脚本可自动寻找/安装） |
+| Node.js | 无需安装（SnowLuma 自带） |
 
-- 升级包拦截：QQ 有时会在后台下载好升级包等安装，路径 `QQ安装目录\versions\` 下形如 `9.9.28-46928-9.9.32-51246.zip` 的文件**发现即删**；`自检-SnowLuma版.bat` 会检查并提示
-- hook 失效的表现：SnowLuma 面板探测不到 QQ 进程 / 注入失败 / 加载后收发全断
-- 恢复办法：卸载新版 QQ → 重装 **9.9.28-46928**（离线安装包与 SnowLuma 安装 zip 均备份在 `D:\Desktop\机器人安装包备份\`）
+> ### ⚠️ QQ 版本强绑定
+> SnowLuma 的 hook 与 QQ 版本**严格对齐**。当前对齐版本为 **QQ 9.9.28-46928**：
+> - 安装任何更高版本（如 9.9.35+）hook 即失效
+> - **必须关闭 QQ 自动更新**；若发现 `QQ安装目录\versions\` 下出现形如 `9.9.28-46928-9.9.32-*.zip` 的升级包，**立即删除**
+> - 协议端 SnowLuma 可独立升级（升级它不必动 QQ）
+> - 运行 `自检-SnowLuma版.bat` 可一键确认当前版本是否匹配
 
-## 目录结构
+### 三步跑通
 
-| 路径 | 说明 |
-|---|---|
-| `SnowLuma\` | 协议端本体（自带 Node.js，`launcher.bat` 启动，WebUI 5099） |
-| `qq-group-bot\` | 业务框架（NoneBot）与全部群管插件，自老项目复制 |
-| `venv\` | 本项目独立的 Python 虚拟环境（已装 nonebot 依赖） |
-| `deploy\snowluma_deploy.py` | 部署脚本：准备 Python 环境、解压 SnowLuma、写 OneBot 配置、体检 |
-| `deploy\snowluma_ctl.py` | 运维脚本：`check` 全网自检 / `stop` 精确停进程 |
-| `deploy\snowluma_account.py` | 账号脚本：`list` / `switch` / `unload` / `sync-config`（走 SnowLuma WebUI API） |
-| `部署配置.json` | 本项目参数（端口、账号、路径），可改；`.example.json` 为模板 |
-| `docs\部署说明.md` | 从零部署到跑通的完整步骤 + 排障表 + 维护要点 |
-| `docs\功能说明.md` | 群管功能清单、命令表、配置项说明 |
-| `docs\框架调研与迁移决策.md` | 换框架的调研与决策记录 |
-| `logs\bot.log` | 业务框架运行日志（启动脚本追加写入） |
+```bat
+:: 1. 克隆仓库
+git clone https://github.com/GuiDI-666/qq-group-bot-snowluma.git
+cd qq-group-bot-snowluma
 
-## 快速开始（四个脚本）
+:: 2. 复制配置模板并填入自己的参数（账号、端口、路径）
+copy 部署配置.example.json 部署配置.json
+
+:: 3. 双击运行（或命令行执行）
+一键部署-SnowLuma版.bat   :: 准备 Python 环境 → 解压 SnowLuma → 写 OneBot 配置 → 体检
+启动-SnowLuma版.bat       :: 启动协议端 + 业务框架
+```
+
+随后在浏览器打开 **http://127.0.0.1:5099**（SnowLuma 面板）扫码登录机器人账号，
+最后用 `自检-SnowLuma版.bat` 做全链路体检。详见 **[docs/部署说明.md](docs/部署说明.md)**。
+
+### 一键脚本一览
 
 | 脚本 | 用途 |
 |---|---|
 | `一键部署-SnowLuma版.bat` | 准备 Python 环境与依赖 → 解压 SnowLuma → 写 OneBot 配置 → 体检 |
-| `启动-SnowLuma版.bat` | 启动协议端（新窗口）+ 业务框架（本窗口） |
-| `自检-SnowLuma版.bat` | 全链路体检：目录、QQ 版本匹配、端口、hook 注入、WS 连接、账号接入 |
-| `切换账号.bat` | 切换登录账号：走 SnowLuma API 卸载旧账号 hook、重载目标账号（QQ 换号仍需人工） |
-| `关闭-SnowLuma版.bat` | 只停本套（SnowLuma + 业务框架），不动老项目 |
+| `启动-SnowLuma版.bat` | 启动协议端（新窗口）+ 业务框架 |
+| `自检-SnowLuma版.bat` | 全链路体检：目录、QQ 版本、端口、hook 注入、WS 连接、账号接入 |
+| `切换账号.bat` | 切换登录账号（自动卸载旧账号 hook、重载目标账号） |
+| `关闭-SnowLuma版.bat` | 精确停止本套进程（按端口属主定位，不误伤其它程序） |
 
-首次使用顺序：**桌面版 QQ 保持登录 → 一键部署 → 启动 → 在 SnowLuma 面板扫码登录目标账号 → 自检**
+## ⚙️ 配置
 
-## 账号怎么安排（重要）
+所有参数集中在 **`部署配置.json`**（模板见 `部署配置.example.json`），业务侧的群管策略
+（等级门槛、广告规则、提示语等）优先通过群内命令修改，落盘于 `qq-group-bot/config.json`。
 
-同一个 QQ 号**不能同时**挂两个协议端，否则会互踢。所以要么让两个项目的号错开，要么**只跑一边**。
+<details>
+<summary><b>主要配置项（点击展开）</b></summary>
 
-**当前采取的办法：只跑本项目。** 老项目（NapCat 版）的进程已停止——它的看门狗、NapCat、业务框架都不在运行，
-所有 QQ 号的占用都归本项目。账号是私有信息，**不写进仓库**，看各自的 `部署配置.json`：
+```jsonc
+{
+  "snowluma_dir": "SnowLuma",          // 协议端目录（可写绝对路径）
+  "snowluma_bot_qq": "123456789",      // 机器人登录的 QQ 号
+  "bot_port": 8081,                    // NoneBot 监听端口
+  "snowluma_http_port": 3100,          // SnowLuma OneBot HTTP
+  "snowluma_ws_port": 3001,            // SnowLuma OneBot WS
+  "snowluma_webui_port": 5099          // SnowLuma WebUI
+}
+```
 
-| | 在哪儿看 | 当前状态 |
-|---|---|---|
-| 本项目 | 本项目 `部署配置.json` → `snowluma_bot_qq` | 运行中，持该号 |
-| 老项目 | 老项目 `部署配置.json` → `bot_qq` | 已停用（进程全停，配置里没改过，仍是同一个号） |
+</details>
 
-⚠ **要回滚到老项目，顺序不能反**：
-
-1. 先停本项目 —— 双击 `关闭-SnowLuma版.bat`，确认 5099 / 3100 / 3001 / 8081 都不在监听
-2. 再启老项目 —— 双击老项目的 `启动机器人.bat`
-
-反过来的话，同一个号会双端在线，腾讯必然踢掉一个；这种掉线**不是任何一方的稳定性问题**，
-但很容易被误读成"新框架也不稳"，从而带偏判断。
-
-## 端口分配
+## 🗺 端口分配
 
 | 端口 | 归属 |
 |---|---|
-| 5099 | SnowLuma 管理面板（WebUI） |
-| 3100 | SnowLuma OneBot HTTP（避开老项目的 3000） |
-| 3001 | SnowLuma OneBot WS 服务端 |
-| 8081 | 本项目业务框架 NoneBot（老项目用 8080，互不冲突） |
-| —— 老项目（互不干涉）—— | —— |
-| 3000 / 6099 / 8080 | 老项目 NapCat HTTP / WS / NoneBot |
+| 5099 | SnowLuma WebUI（管理面板） |
+| 3100 | SnowLuma OneBot HTTP |
+| 3001 | SnowLuma OneBot WS |
+| 8081 | NoneBot2 业务框架 |
 
-## 与老项目的红线
+## 📖 文档
 
-1. **同一 QQ 号不能同时接两个协议端**（会互踢）——见上一节「账号怎么安排」
-2. 端口互不重叠，两个项目可同时运行、同时测试
-3. 老项目保持可运行状态，随时能回滚（先停本项目，再双击老项目 `启动机器人.bat`）
-4. 两个 QQ 号**共在**的群里，两边会各自响应一次命令；想干净测试请用不共群的场景
+| 文档 | 内容 |
+|---|---|
+| [docs/部署说明.md](docs/部署说明.md) | 从零部署到跑通的完整步骤、排障表、维护要点 |
+| [docs/功能说明.md](docs/功能说明.md) | 群管功能清单、完整命令表、配置项说明 |
+| [docs/框架调研与迁移决策.md](docs/框架调研与迁移决策.md) | 协议端选型调研与决策记录 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本更新说明 |
 
-## 注意事项
+## ❗ 注意事项
 
-- SnowLuma 的 native hook **按 QQ 版本对齐**：QQ 自动升级可能导致 hook 失效，建议关闭 QQ 自动更新；当前是否匹配用 `自检-SnowLuma版.bat` 一键确认
-- SnowLuma 必须与桌面版 QQ 用**同一个 Windows 用户、同样权限**运行，否则注入会失败
-- SnowLuma 核心组件为 source-available 非商业许可，仅供学习研究，商用需授权
+- SnowLuma 必须与桌面版 QQ 以**同一个 Windows 用户、相同权限**运行，否则注入失败
+- 同一个 QQ 号**不要同时接入两个协议端**（如 SnowLuma 与 NapCat 同时在线会互踢）
+- 切换登录账号请使用 `切换账号.bat`，手动复制配置文件会造成端口占用（`EADDRINUSE`）
+- 业务框架必须在 `qq-group-bot/` 目录下启动，否则读不到 `.env`、端口会落错
+
+## 📄 免责声明
+
+- 本项目基于第三方协议端 **SnowLuma**（hook 真实桌面 QQ）与 **NoneBot2** 构建，与腾讯官方无任何关联
+- 仅供**学习研究**使用，请遵守当地法律法规及腾讯软件许可协议；因使用本项目产生的账号风控、封禁等后果由使用者自行承担
+- 请勿用于任何商业用途或灰产场景
+
+## 📃 License
+
+本项目以 [MIT](./LICENSE) 许可证开源。仓库内 `SnowLuma/` 协议端为其独立发行物，
+遵循 SnowLuma 原始许可（source-available，非商业使用需授权），详见其官方仓库。
