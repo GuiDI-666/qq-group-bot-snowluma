@@ -2,6 +2,8 @@
 
 命令（管理员/群主/超级管理员可用）：
   设置等级 30            —— 修改入群自动审批的QQ等级门槛
+  查看等级               —— 查看入群审批完整设置（别名：查看入群等级/等级设置）
+  查看设置               —— 查看所有设置总览（别名：全部设置/设置总览）
   添加广告 关键词或正则   —— 追加广告拦截规则
   删除广告 关键词或正则   —— 删除广告拦截规则
   广告列表               —— 查看当前广告规则
@@ -214,6 +216,104 @@ async def handle_del_managed(event: MessageEvent, args: Message = CommandArg()):
     if groups:
         await del_managed.finish(f"✅ 群 {gid} 已移出管理群名单，剩余 {len(groups)} 个管理群")
     await del_managed.finish("✅ 已移出管理群名单（名单已空，当前对所有群生效）")
+
+
+# ---------------- 查看入群等级设置 ----------------
+show_level = on_command(
+    "查看等级", aliases={"查看入群等级", "等级设置"},
+    rule=managed_group(), permission=COMMON_PERM, priority=5, block=True,
+)
+
+
+@show_level.handle()
+async def handle_show_level(event: MessageEvent):
+    if not isinstance(event, GroupMessageEvent):
+        await show_level.finish("该命令仅在群聊中可用")
+    cfg = _load().get("auto_approve", {})
+    enabled = "✅ 开启" if cfg.get("enabled", False) else "❌ 关闭"
+    min_level = int(cfg.get("min_level", 30))
+    groups = cfg.get("groups", [])
+    scope = "所有管理群" if not groups else "、".join(str(g) for g in groups)
+    fb_map = {
+        "approve": "自动通过",
+        "reject": "自动拒绝",
+        "ignore": "忽略（留给管理员手动处理）",
+    }
+    fallback = fb_map.get(str(cfg.get("fallback", "ignore")).lower(),
+                          str(cfg.get("fallback", "ignore")))
+    await show_level.finish(
+        f"【入群自动审批设置】\n"
+        f"功能状态：{enabled}\n"
+        f"等级门槛：QQ ≥ {min_level} 级自动通过，否则自动拒绝\n"
+        f"生效范围：{scope}\n"
+        f"查不到等级时：{fallback}\n"
+        f"拒绝理由：{cfg.get('reject_reason', '等级不足')}\n"
+        f"通过通知：{cfg.get('notice') or '（无）'}\n"
+        f"\n修改方法：/设置等级 数字（1~100）"
+    )
+
+
+# ---------------- 查看所有设置 ----------------
+show_settings = on_command(
+    "查看设置", aliases={"全部设置", "设置总览"},
+    rule=managed_group(), permission=COMMON_PERM, priority=5, block=True,
+)
+
+
+@show_settings.handle()
+async def handle_show_settings(event: MessageEvent):
+    if not isinstance(event, GroupMessageEvent):
+        await show_settings.finish("该命令仅在群聊中可用")
+    cfg = _load()
+
+    # 入群审批
+    ap = cfg.get("auto_approve", {})
+    ap_state = "开启" if ap.get("enabled", False) else "关闭"
+    ap_min = int(ap.get("min_level", 30))
+    ap_groups = ap.get("groups", [])
+    ap_scope = "所有管理群" if not ap_groups else f"指定 {len(ap_groups)} 个群"
+    fb_map = {"approve": "通过", "reject": "拒绝", "ignore": "忽略"}
+    ap_fb = fb_map.get(str(ap.get("fallback", "ignore")).lower(),
+                       str(ap.get("fallback", "ignore")))
+
+    # 广告拦截
+    banned = cfg.get("banned_words", [])
+    ban_mute = int(cfg.get("banned_word_mute_seconds", 600)) // 60
+    ads = cfg.get("ad_patterns", [])
+    ad_mute = int(cfg.get("ad_mute_seconds", 3600)) // 60
+
+    # 提示语（截断防刷屏）
+    def _short(text: str, n: int = 30) -> str:
+        text = text or "（未设置）"
+        return text if len(text) <= n else text[:n] + "…"
+
+    welcome = _short(cfg.get("welcome"))
+    farewell = _short(cfg.get("farewell"))
+
+    # 运行范围
+    groups = cfg.get("managed_groups", [])
+    if groups:
+        scope_line = f"管理群：{len(groups)} 个（白名单模式，仅名单内群运行）"
+    else:
+        scope_line = "管理群：未设白名单，对所有加入的群生效"
+
+    await show_settings.finish(
+        "【机器人当前设置总览】\n"
+        "\n▣ 入群自动审批\n"
+        f"├ 状态：{ap_state}｜门槛：QQ ≥ {ap_min} 级\n"
+        f"├ 生效：{ap_scope}｜查不到等级：{ap_fb}\n"
+        "└ 详见：/查看等级\n"
+        "\n▣ 广告拦截（命中即撤回+禁言）\n"
+        f"├ 广告规则：{len(ads)} 条｜禁言 {ad_mute} 分钟\n"
+        f"├ 违禁词：{len(banned)} 个｜禁言 {ban_mute} 分钟\n"
+        "└ 详见：/广告列表\n"
+        "\n▣ 提示语\n"
+        f"├ 欢迎语：{welcome}\n"
+        f"└ 退群语：{farewell}\n"
+        "\n▣ 运行范围\n"
+        f"└ {scope_line}\n"
+        "\n修改入口：/设置等级 /添加广告 /设置欢迎 /设置退群"
+    )
 
 
 list_managed = on_command("管理群列表", priority=5, block=True)
