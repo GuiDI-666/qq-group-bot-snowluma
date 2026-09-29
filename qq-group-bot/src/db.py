@@ -76,7 +76,7 @@ def _run_sync(fn):
 ROLE_UIN_OFFSET = 10000
 
 
-def _sync_register(cfg: dict, qq: str, password: str) -> None:
+def _sync_register(cfg: dict, qq: str, password: str) -> int:
     # 一人一号：user.Name=qq 已存在，或 player.baseinfo 已有角色绑了该 QQ，都拒绝
     conn = _connect(cfg, cfg.get("db_player", "player"))
     try:
@@ -101,7 +101,14 @@ def _sync_register(cfg: dict, qq: str, password: str) -> None:
                 "VALUES (%s, %s, %s)",
                 (qq, password, __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             )
+            uin = cur.lastrowid
+            # 机器人注册标记：InviteCode = QQbot<Uin>，便于区分机器人工与人工开的号
+            cur.execute(
+                "UPDATE `user` SET `InviteCode`=%s WHERE `Uin`=%s",
+                (f"QQbot{uin}", uin),
+            )
         conn.commit()
+        return uin
     except DbError:
         conn.rollback()
         raise
@@ -197,20 +204,18 @@ def _sync_change_password(cfg: dict, uin: int, new_password: str) -> None:
 
 # ---------------- player 库（角色，绑定关系写 baseinfo.QQ 一列） ----------------
 
-def _sync_bind_qq(cfg: dict, qq: str, nickname: str) -> str:
-    """把 QQ 绑定到指定角色名，返回角色昵称。一条 QQ 只能绑一个角色。"""
+def _sync_bind_qq(cfg: dict, qq: str, role_uin: int) -> str:
+    """把 QQ 绑定到指定角色（按 baseinfo.Uin 定位，如 10002）。一条 QQ 只能绑一个角色。"""
     conn = _connect(cfg, cfg.get("db_player", "player"))
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT `Uin`, `NickName`, `QQ` FROM `baseinfo` WHERE `NickName`=%s",
-                (nickname,),
+                "SELECT `Uin`, `NickName`, `QQ` FROM `baseinfo` WHERE `Uin`=%s",
+                (role_uin,),
             )
             roles = cur.fetchall()
             if not roles:
-                raise DbError(f"角色「{nickname}」不存在，请核对角色名（区分大小写）")
-            if len(roles) > 1:
-                raise DbError(f"存在 {len(roles)} 个同名角色，请联系管理员处理")
+                raise DbError(f"角色 Uin {role_uin} 不存在，请核对（游戏内查询角色Uin）")
             role = roles[0]
             bound = (role.get("QQ") or "").strip()
             if bound and bound != str(qq):
@@ -239,14 +244,14 @@ def _sync_bind_qq(cfg: dict, qq: str, nickname: str) -> str:
         conn.close()
 
 
-def _sync_unbind(cfg: dict, nickname: str) -> int:
-    """管理员解绑：按角色名清空 QQ。返回解绑的角色数。"""
+def _sync_unbind(cfg: dict, role_uin: int) -> int:
+    """管理员解绑：按角色 Uin 清空 QQ。返回解绑的角色数（0=该角色本来没绑）。"""
     conn = _connect(cfg, cfg.get("db_player", "player"))
     try:
         with conn.cursor() as cur:
             n = cur.execute(
-                "UPDATE `baseinfo` SET `QQ`=NULL WHERE `NickName`=%s AND `QQ` IS NOT NULL AND `QQ`<>''",
-                (nickname,),
+                "UPDATE `baseinfo` SET `QQ`=NULL WHERE `Uin`=%s AND `QQ` IS NOT NULL AND `QQ`<>''",
+                (role_uin,),
             )
         conn.commit()
         return n
@@ -259,12 +264,12 @@ def _sync_unbind(cfg: dict, nickname: str) -> int:
 
 # ---------------- 异步门面（供插件调用） ----------------
 
-async def register(qq: str) -> str:
-    """注册：账号=QQ号，随机初始密码。返回明文密码。"""
+async def register(qq: str) -> tuple[str, int]:
+    """注册：账号=QQ号，随机初始密码，InviteCode=QQbot<Uin> 标记。返回 (密码, 账号Uin)。"""
     cfg = load_config()
     password = gen_password()
-    await _run_sync(lambda: _sync_register(cfg, str(qq), password))
-    return password
+    uin = await _run_sync(lambda: _sync_register(cfg, str(qq), password))
+    return password, uin
 
 
 async def get_account(qq: str) -> dict | None:
@@ -278,16 +283,16 @@ async def change_password(qq: str, new_password: str) -> dict:
     cfg = load_config()
     acc = await _run_sync(lambda: _sync_find_account_by_qq(cfg, str(qq)))
     if not acc:
-        raise DbError("你的 QQ 还没有绑定游戏角色，请先私聊我发送 /绑定QQ 角色名")
+        raise DbError("你的 QQ 还没有绑定游戏角色，请先私聊我发送 /绑定QQ 角色Uin")
     await _run_sync(lambda: _sync_change_password(cfg, acc["uin"], new_password))
     return acc
 
 
-async def bind_qq(qq: str, nickname: str) -> str:
+async def bind_qq(qq: str, role_uin: int) -> str:
     cfg = load_config()
-    return await _run_sync(lambda: _sync_bind_qq(cfg, str(qq), nickname.strip()))
+    return await _run_sync(lambda: _sync_bind_qq(cfg, str(qq), int(role_uin)))
 
 
-async def unbind(nickname: str) -> int:
+async def unbind(role_uin: int) -> int:
     cfg = load_config()
-    return await _run_sync(lambda: _sync_unbind(cfg, nickname.strip()))
+    return await _run_sync(lambda: _sync_unbind(cfg, int(role_uin)))

@@ -28,7 +28,7 @@ GUIDE = (
     "⚠ 账号命令涉及密码，请私聊机器人办理：\n"
     "先加机器人为好友，然后私聊发送：\n"
     "/注册 —— 注册游戏账号（账号=你的QQ号，随机初始密码）\n"
-    "/绑定QQ 角色名 —— 把你的QQ绑定到游戏角色\n"
+    "/绑定QQ 角色Uin —— 把你的QQ绑定到游戏角色（如 /绑定QQ 10002）\n"
     "/查看密码 —— 查看账号密码\n"
     "/修改密码 新密码 —— 修改密码"
 )
@@ -75,11 +75,12 @@ async def handle_register(event: MessageEvent):
     async def _do():
         qq = str(event.user_id)
         try:
-            password = await db.register(qq)
+            password, uin = await db.register(qq)
             await register_cmd.finish(
                 f"✅ 注册成功！\n游戏账号：{qq}\n初始密码：{password}\n"
+                f"账号编号 Uin：{uin}（进游戏建角色后，角色Uin = {uin} + 10000）\n"
                 f"\n请妥善保管，可随时发 /查看密码 查看。"
-                f"\n提示：进游戏后可发 /绑定QQ 角色名 把 QQ 绑到角色。"
+                f"\n提示：进游戏后可发 /绑定QQ 角色Uin 把 QQ 绑到角色。"
             )
         except DbError as e:
             await register_cmd.finish(f"❌ {e}")
@@ -94,15 +95,16 @@ bind_cmd = on_command("绑定QQ", aliases={"绑定qq", "绑定角色"}, priority
 @bind_cmd.handle()
 async def handle_bind(event: MessageEvent, args: Message = CommandArg()):
     async def _do():
-        nickname = _plain(args)
-        if not nickname:
+        text = _plain(args).replace("U", "").replace("u", "")
+        if not text.isdigit():
             await bind_cmd.finish(
-                "私聊用法：/绑定QQ 角色名\n例：/绑定QQ 飞车小白\n"
-                "（角色名以游戏内显示的昵称为准）"
+                "私聊用法：/绑定QQ 角色Uin\n例：/绑定QQ 10002\n"
+                "（角色Uin 是 baseinfo 里的编号；机器人注册的号 = 账号Uin + 10000，"
+                "老玩家在游戏里查询或找管理员查）"
             )
         try:
-            name = await db.bind_qq(str(event.user_id), nickname)
-            await bind_cmd.finish(f"✅ 绑定成功！你的 QQ 已绑定角色「{name}」\n现在可以 /查看密码 / /修改密码 了")
+            name = await db.bind_qq(str(event.user_id), int(text))
+            await bind_cmd.finish(f"✅ 绑定成功！你的 QQ 已绑定角色「{name}」（Uin {text}）\n现在可以 /查看密码 / /修改密码 了")
         except DbError as e:
             await bind_cmd.finish(f"❌ {e}")
 
@@ -125,7 +127,7 @@ async def handle_show_pwd(event: MessageEvent):
             await show_pwd.finish(
                 "未找到你的账号：\n"
                 "- 机器人注册的号：直接发 /注册 即可\n"
-                "- 老玩家：请先发 /绑定QQ 角色名 绑定后再查"
+                "- 老玩家：请先发 /绑定QQ 角色Uin 绑定后再查"
             )
             return
         nick = f"\n游戏角色：{acc['nickname']}" if acc["nickname"] else ""
@@ -155,8 +157,9 @@ async def handle_change_pwd(event: MessageEvent, args: Message = CommandArg()):
             await change_pwd.finish(f"私聊用法：/修改密码 新密码\n{VALID_PWD_MSG}")
         try:
             acc = await db.change_password(str(event.user_id), new_pwd)
+            nick = f"（角色 {acc['nickname']}）" if acc["nickname"] else ""
             await change_pwd.finish(
-                f"✅ 密码修改成功！\n游戏账号：{acc['name']}\n新密码：{new_pwd}"
+                f"✅ 密码修改成功！\n游戏账号：{acc['name']}{nick}\n新密码：{new_pwd}"
             )
         except DbError as e:
             await change_pwd.finish(f"❌ {e}")
@@ -243,17 +246,17 @@ unbind_cmd = on_command("解绑", priority=5, block=True)
 async def handle_unbind(event: MessageEvent, args: Message = CommandArg()):
     if not await _check_superuser(event):
         return
-    nickname = _plain(args)
-    if not nickname:
-        await unbind_cmd.finish("用法：/解绑 角色名 —— 清空该角色的 QQ 绑定（玩家可重新绑定）")
+    text = _plain(args).replace("U", "").replace("u", "")
+    if not text.isdigit():
+        await unbind_cmd.finish("用法：/解绑 角色Uin —— 清空该角色的 QQ 绑定（玩家可重新绑定）\n例：/解绑 10002")
     try:
-        n = await db.unbind(nickname)
+        n = await db.unbind(int(text))
     except DbError as e:
         await unbind_cmd.finish(f"❌ {e}")
         return
     if n:
-        await unbind_cmd.finish(f"✅ 角色「{nickname}」已解绑（{n} 个），玩家可重新 /绑定QQ")
-    await unbind_cmd.finish(f"角色「{nickname}」本来就没有绑定 QQ")
+        await unbind_cmd.finish(f"✅ 角色 Uin {text} 已解绑（{n} 个），玩家可重新 /绑定QQ")
+    await unbind_cmd.finish(f"角色 Uin {text} 本来就没有绑定 QQ")
 
 
 async def _check_superuser(event: MessageEvent) -> bool:
