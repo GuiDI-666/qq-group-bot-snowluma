@@ -30,6 +30,10 @@
   "ad_alert": "检测到疑似广告，已撤回并禁言 {mention} 1小时",
 
   "managed_groups": [],
+  "_managed_groups说明": "群管功能生效群；空 = 所有群",
+
+  "account_groups": [],
+  "_account_groups说明": "账号功能（注册/查密/改密）群聊指引的生效群；空 = 所有群。用 /添加账号群 设置",
   "_managed_groups_说明": "留空 = 所有群都生效（机器人是管理员的群）；填了群号 = 只在名单内的群运行，其余群完全静默。建议用私聊『添加管理群 群号』维护",
 
   "admin_users": [

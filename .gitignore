@@ -22,3 +22,4 @@ qq-group-bot/data/
 # QQ 安装包/更新包（体积巨大，且版本需与 SnowLuma hook 匹配，不入库）
 QQ_*.exe
 *.zip
+qq-group-bot/mysql.json
